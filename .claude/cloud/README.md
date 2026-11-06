@@ -41,9 +41,16 @@ entweder die Claude-GitHub-App für das Repo installieren oder einmal in einem l
   - „Lege einen Branch an, behebe <Problem> und prüfe es mit `--tests`.“
   - „Prüfe, ob der aktuelle Stand auch mit GCC kompiliert.“
 
+## Arbeitsablauf
+
+1. **Cloudsitzung**: Claude ändert den Code, baut die betroffenen Teile, führt die Unit-Tests aus und pusht einen Feature-Branch.
+2. **CachyOS-Rechner (RTX 4090)**: Branch holen, nativ bauen und im Spiel testen. Claude sagt dir dazu,
+   was du testen sollst und welche Stellen aus `RPCS3.log` es braucht.
+3. **Rückmeldung**: Ergebnis bzw. Log-Auszug in die Sitzung geben, Claude wertet aus und bessert nach.
+
 ## Grenzen
 
-- Keine GPU und kein Bildschirm: Spiele lassen sich in der Cloud nicht starten. Geprüft wird per Build und Unit-Tests.
+- Keine GPU und kein Bildschirm in der Cloud: Spiele, Grafik und Performance testest du auf dem CachyOS-Rechner.
 - Laut Anthropic ca. 4 vCPUs, 16 GB RAM und 30 GB Platte (kann sich ändern). Ein Vollbuild dauert entsprechend lange,
   deshalb startet Claude ihn im Hintergrund und liest das Log.
 - Jede Sitzung beginnt mit einem frischen Klon. Die Submodule (ohne LLVM) werden pro Sitzung neu geladen,

@@ -21,9 +21,18 @@ Personal fork of [RPCS3/rpcs3](https://github.com/RPCS3/rpcs3), the open-source 
 - `3rdparty/` – git submodules and vendored libraries: do not edit
 - `.ci/`, `.github/workflows/` – upstream CI · `.claude/cloud/`, `scripts/claude-cloud/` – this cloud template
 
-## Building and testing (cloud sessions)
+## Testing workflow
 
-Cloud sessions have no GPU and no display, so games cannot be run. Verify changes by compiling and running the unit tests.
+Runtime testing (games, rendering, performance) happens on the user's **CachyOS desktop with an NVIDIA RTX 4090** (Vulkan).
+Cloud sessions have no GPU and no display, so the loop is:
+
+1. Cloud session: change the code, build the affected targets, run the unit tests.
+2. Commit and push the feature branch.
+3. Tell the user in German what to test on CachyOS: branch name, game or scenario, relevant settings
+   (renderer, SPU/PPU decoder, etc.), what to look for, and which lines of `RPCS3.log` to send back.
+4. Analyse the log or result the user reports and iterate.
+
+## Building and testing (cloud sessions)
 
 All builds run in the official CI image (`rpcs3/rpcs3-ci-jammy`, same toolchain as upstream Linux CI) via `scripts/claude-cloud/build.sh`.
 The script fetches the needed submodules itself (fresh clone per session).

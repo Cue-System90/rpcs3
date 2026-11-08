@@ -1,0 +1,13 @@
+#version 450
+layout(local_size_x = 32) in;
+layout(binding = 0) uniform sampler2DShadow tex_white;   // clamp-to-border, opaque white border
+layout(binding = 1) uniform sampler2DShadow tex_black;   // clamp-to-border, opaque black border
+layout(std430, binding = 2) buffer Out { float res[]; };
+void main()
+{
+	uint i = gl_GlobalInvocationID.x;
+	float r = -0.5 + 0.125 * float(i % 32u);           // refs -0.5 .. 3.375
+	res[i]       = textureLod(tex_white, vec3(0.5, 0.5, r), 0.0);  // inside, texel = clear value
+	res[i + 32u] = textureLod(tex_white, vec3(1.5, 0.5, r), 0.0);  // outside -> border (white)
+	res[i + 64u] = textureLod(tex_black, vec3(1.5, 0.5, r), 0.0);  // outside -> border (black)
+}

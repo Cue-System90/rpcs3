@@ -41,14 +41,19 @@ Local sessions can build and run games directly. Checkout: `/mnt/NVME-DATA/Logo_
 
 ```bash
 git -c submodule.3rdparty/llvm/llvm.update=none submodule update --init --depth 1 --jobs 8
+# vulkan-headers is not installed system-wide; clone the tag matching vulkan-icd-loader (pacman -Q vulkan-icd-loader)
+git clone --depth 1 --branch v1.4.363 https://github.com/KhronosGroup/Vulkan-Headers.git build-deps/Vulkan-Headers
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-  -DBUILD_LLVM=OFF -DUSE_LTO=OFF -DCMAKE_LINKER_TYPE=LLD -DUSE_SYSTEM_FFMPEG=ON -DUSE_NATIVE_INSTRUCTIONS=ON
+  -DBUILD_LLVM=OFF -DUSE_LTO=OFF -DCMAKE_LINKER_TYPE=LLD -DUSE_SYSTEM_FFMPEG=ON -DUSE_NATIVE_INSTRUCTIONS=ON \
+  -DVulkan_INCLUDE_DIR=$PWD/build-deps/Vulkan-Headers/include -DVulkan_LIBRARY=/usr/lib/libvulkan.so
 nice -n 15 ninja -C build -j24        # ~8 min from scratch, binary: build/bin/rpcs3
 ```
 
 - `USE_LTO` defaults to ON; with clang it needs lld, so turn it off (or set `CMAKE_LINKER_TYPE=LLD`).
 - The FFmpeg prebuilt download from GitHub release assets hangs here; use the system FFmpeg.
 - System LLVM (23.x) works with `BUILD_LLVM=OFF`.
+- Check the cmake output for `Could NOT find Vulkan`: without it the build silently falls back to OpenGL, and OpenGL inside
+  `kwin_wayland --virtual` hung the GPU context once (NVIDIA Xid 109 in the test process, 2026-11-08).
 - Never run test builds against the user's real config (`~/.config/rpcs3` = `console_emulation/PS3/rpcs3_data`).
   Use isolated `XDG_CONFIG_HOME`/`XDG_CACHE_HOME` outside `/tmp` (RPCS3 refuses temporary locations), for example
   `console_emulation/PS3/tools/gt5_research/xdg/`, and run windows inside `kwin_wayland --virtual`, never on the user's desktop.

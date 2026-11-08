@@ -1,0 +1,17 @@
+Version: 1.2
+
+# Gran Turismo 5 (EU, BCES00569) - rendering fixes
+# Copy this file to the RPCS3 "patches" folder, then enable the patch in Manage > Game Patches.
+
+PPU-7a5ee7bc2fef9566dd80e35893fe2c5571197726:
+  "Disable Shadow Optimize (bumper cam darkening fix)":
+    Games:
+      "Gran Turismo 5":
+        BCES00569: [ 02.11 ]
+    Author: "Cue-System90"
+    Patch Version: 1.0
+    Group: ""
+    Notes: "Fixes the track turning dark in bumper cam while no other car is in view (for example when leading at Tsukuba). The shadow map depth range is normally fitted to the visible cars; with none in view the fit is skipped and a stale range stays active. This patch always uses the course's static shadow range. Shadows can be slightly less sharp. Tested in-game."
+    Patch:
+      - [ be32, 0x008B995C, 0x3A200000 ] # li r17, 0     (was mr r17, r3: shadowOptimize flag)
+      - [ be32, 0x008B9964, 0x38000000 ] # li r0, 0      (was clrlwi r0, r17, 24): skip caster fitting

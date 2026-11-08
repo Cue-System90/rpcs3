@@ -1,6 +1,11 @@
 RPCS3
 =====
 
+> **This is a personal fork of [RPCS3/rpcs3](https://github.com/RPCS3/rpcs3).**
+> It adds game patches and emulator fixes that are not upstream (yet), mainly for Gran Turismo 5.
+> See [`game-patches/`](game-patches/) and the [issue tracker](https://github.com/Cue-System90/rpcs3/issues).
+> For official builds and support use the upstream project.
+
 [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/RPCS3/rpcs3/rpcs3.yml?branch=master&logo=github&label=Actions)](https://github.com/RPCS3/rpcs3/actions/workflows/rpcs3.yml)
 [![RPCS3 Discord Server](https://img.shields.io/discord/272035812277878785?color=5865F2&label=RPCS3%20Discord&logo=discord&logoColor=white)](https://discord.gg/rpcs3)
 

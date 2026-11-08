@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "Emu/perf_probe.h"
 #include "sys_rsx.h"
 
 #include "Emu/System.h"
@@ -662,6 +663,7 @@ error_code sys_rsx_context_free(ppu_thread& ppu, u32 context_id)
  */
 error_code sys_rsx_context_iomap(cpu_thread& cpu, u32 context_id, u64 io, u64 ea, u64 size, u64 flags)
 {
+	perf_probe::scoped probe(perf_probe::rsx_iomap);
 	cpu.state += cpu_flag::wait;
 
 	sys_rsx.warning("sys_rsx_context_iomap(context_id=0x%x, io=0x%x, ea=0x%x, size=0x%x, flags=0x%llx)", context_id, io, ea, size, flags);
@@ -732,6 +734,7 @@ error_code sys_rsx_context_iomap(cpu_thread& cpu, u32 context_id, u64 io, u64 ea
  */
 error_code sys_rsx_context_iounmap(cpu_thread& cpu, u32 context_id, u64 io, u64 size)
 {
+	perf_probe::scoped probe(perf_probe::rsx_iounmap);
 	cpu.state += cpu_flag::wait;
 
 	sys_rsx.warning("sys_rsx_context_iounmap(context_id=0x%x, io=0x%x, size=0x%x)", context_id, io, size);

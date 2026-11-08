@@ -1,5 +1,6 @@
 #include "Emu/RSX/VK/vkutils/descriptors.h"
 #include "stdafx.h"
+#include "Emu/perf_probe.h"
 #include "../Overlays/overlay_compile_notification.h"
 #include "../Overlays/Shaders/shader_loading_dialog_native.h"
 
@@ -951,6 +952,29 @@ bool VKGSRender::on_access_violation(rsx::context* ctx, u32 address, bool is_wri
 
 	if (result.num_flushable > 0)
 	{
+		perf_probe::scoped probe(perf_probe::av_flush);
+
+		if (perf_probe::enabled())
+		{
+			// Describe the first faults and then a sample, to see what the CPU keeps reading back
+			static atomic_t<u32> s_flush_reports{};
+
+			if (const u32 n = s_flush_reports++; n < 30 || n % 600 == 0)
+			{
+				const auto cpu = get_current_cpu_thread();
+				std::string desc = fmt::format("flush #%u: addr=0x%x write=%d thread=%s fault=[0x%x-0x%x] invalidate=[0x%x-0x%x]", n, address, is_writing,
+					cpu ? cpu->get_name() : std::string("?"), result.fault_range.start, result.fault_range.end, result.invalidate_range.start, result.invalidate_range.end);
+
+				for (const auto* sec : result.sections_to_flush)
+				{
+					fmt::append(desc, " | base=0x%x size=0x%x ctx=%d fmt=0x%x %ux%u sync=%d", sec->get_section_base(), sec->get_section_size(),
+						static_cast<int>(sec->get_context()), static_cast<u32>(sec->get_format()), sec->get_width(), sec->get_height(), sec->is_synchronized());
+				}
+
+				rsx_log.notice("PROBE %s", desc);
+			}
+		}
+
 		if (g_fxo->get<rsx::dma_manager>().is_current_thread())
 		{
 			// The offloader thread cannot handle flush requests
@@ -972,6 +996,19 @@ bool VKGSRender::on_access_violation(rsx::context* ctx, u32 address, bool is_wri
 
 			g_fxo->get<rsx::dma_manager>().clear_mem_fault_flag();
 			return true;
+		}
+
+		if (!RSX(m_ctx)->is_current_thread() && !perf_probe::readback_fix_disabled())
+		{
+			// Games often read back small render targets a frame or two after drawing them (GT5: 16x8 targets every frame).
+			// The predictor has usually copied them already. If that copy has finished on the GPU, the data only needs to be
+			// written to guest memory: no command buffer submit and no wait for the RSX thread, which may be idle until the next flip.
+			perf_probe::scoped probe_fast(perf_probe::flush_fast);
+
+			if (resources->texture_cache.flush_all_if_ready(*m_secondary_cb_list.get(), result))
+			{
+				return true;
+			}
 		}
 
 		bool has_queue_ref = false;
@@ -1002,7 +1039,10 @@ bool VKGSRender::on_access_violation(rsx::context* ctx, u32 address, bool is_wri
 		if (has_queue_ref)
 		{
 			// Wait for the RSX thread to process request if it hasn't already
-			m_flush_requests.producer_wait();
+			{
+				perf_probe::scoped probe_wait(perf_probe::flush_rsx_wait);
+				m_flush_requests.producer_wait();
+			}
 
 			data_transfer_completed_callback = [&]()
 			{
@@ -1011,7 +1051,10 @@ bool VKGSRender::on_access_violation(rsx::context* ctx, u32 address, bool is_wri
 			};
 		}
 
-		resources->texture_cache.flush_all(*m_secondary_cb_list.next(), result, data_transfer_completed_callback);
+		{
+			perf_probe::scoped probe_all(perf_probe::flush_all);
+			resources->texture_cache.flush_all(*m_secondary_cb_list.next(), result, data_transfer_completed_callback);
+		}
 
 		if (has_queue_ref)
 		{

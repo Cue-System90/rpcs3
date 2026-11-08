@@ -301,7 +301,13 @@ namespace vk
 			AUDIT(synchronized);
 
 			// Synchronize, reset dma_fence after waiting
-			vk::wait_for_event(dma_fence.get(), GENERAL_WAIT_TIMEOUT);
+			{
+				static atomic_t<u32> s_traces{};
+				perf_probe::log_backtrace_once("imp_flush", s_traces, 4);
+
+				perf_probe::scoped probe_wait(perf_probe::flush_event_wait);
+				vk::wait_for_event(dma_fence.get(), GENERAL_WAIT_TIMEOUT);
+			}
 
 			// Calculate smallest range to flush - for framebuffers, the raster region is enough
 			const auto range = (context == rsx::texture_upload_context::framebuffer_storage) ? get_section_range() : get_confirmed_range();
@@ -368,6 +374,12 @@ namespace vk
 		void* map_synchronized(u32, u32)
 		{
 			return nullptr;
+		}
+
+		// True if the GPU->CPU copy recorded for this section has already executed
+		bool is_readback_complete() const
+		{
+			return dma_fence && dma_fence->status() == VK_EVENT_SET;
 		}
 
 		void finish_flush()

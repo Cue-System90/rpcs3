@@ -101,6 +101,14 @@ The border colour acts as depth 1.0 (white) or 0.0 (black) in the compare.
 
 **Consequence:** on NVIDIA a fixed-point depth texture behaves like RSX for `z > 1`. Anything that ends up as D32F (float depth surfaces, "Force High Precision Z buffer", AMD) does not clamp. That matches RSX only if the game really uses float depth.
 
+## Readback latency (measured with GT5)
+
+- A CPU read of a GPU-written surface (a protected, "flushable" texture cache section) runs in the faulting thread: `VKGSRender::on_access_violation` posts a flush request, waits for the RSX thread to submit its command buffer (`on_local_task`), then copies the section's readback buffer into guest memory (`texture_cache::flush_all` → `cached_texture_section::flush` → `imp_flush`).
+- The flush predictor records speculative GPU→CPU copies for sections that are read back regularly (`flush_if_cache_miss_likely`), so the copy itself is usually done. In GT5 (EU 02.11, in race) a PPU thread reads three 16x8 BGRA8 render targets in rotation, one per frame, two frames after drawing them; the copy took about 0.15 ms, but the thread waited about 9.2 ms for the RSX thread.
+- Cause: the RSX thread sleeps in the frame limiter (`display_engine::handle_emu_flip`, one `lv2_obj::wait_timeout` for the rest of the frame) and only services flush requests afterwards. With a fast host GPU that is most of a frame.
+- Fork change: the frame limiter sleeps in 0.5 ms slices and services pending flush requests in between (`wait_for_frame_limit`), and a flush whose readback has already completed on the GPU (`dma_fence` event set) is finished without any queue sync (`texture_cache::flush_all_if_ready`). Measured: PPU wait 58.6 % → 3.4 % of one core, 9.3 ms → 0.57 ms per readback.
+- A CPU texture upload over memory that still holds a flushable render target makes the RSX thread itself read the target back first, while holding the texture cache lock. GT5 after a race: a 1024x1024 DXT5 texture at `0xc9507f80` overlaps a 512x512 BGRA8 render target at `0xc94c8780` (it starts 127 rows into it); every frame costs a ~25 ms GPU sync and the game drops to ~32 fps. Not fixed yet; the overlap may come from a render target whose drawn area is smaller than its clip size.
+
 ## Known divergences noted in the code
 
 - **Border colour:** SNORM border colours are biased as on hardware, `(x-128)/127` (`VKDraw.cpp`, `RSXTexture.cpp`).

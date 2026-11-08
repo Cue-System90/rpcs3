@@ -49,6 +49,25 @@ XDG_CONFIG_HOME=$R/xdg/config XDG_CACHE_HOME=$R/xdg/cache rpcs3 ...
 - Game patches go to `patches/<TITLE_ID>_patch.yml`; RPCS3 loads `patch.yml`, `imported_patch.yml` and the per-title file (`patch_engine::append_title_patches`, `Utilities/bin_patch.cpp`).
 - Free code cave: confirm that no instruction references the area (the GT5 hood-cam patch used `0x156C000` in EU 02.11).
 
+## Measuring emulation overhead in a game
+
+Fork-only timing probes (`rpcs3/Emu/perf_probe.*`) are compiled in but inactive. Set `RPCS3_PERF_PROBE=1` and the log gets a `PROBE:` line every 5 seconds with count, total, average and maximum time per probe, plus frame pacing (frames over 20 ms and 34 ms). Probes cover:
+
+- texture cache write-protection faults per thread class (`av_ppu`, `av_spu`, `av_rsx`), faults that need a GPU readback (`av_flush`) and how that time splits up: waiting for the RSX thread (`flush_rsx_wait`), the transfer (`flush_all`, `flush_retransfer`) and the GPU signal (`flush_event_wait`);
+- `sys_mmapper` shared memory map/unmap, `sys_rsx` io map/unmap, contended RSX IO range locks (`iolock_wait`);
+- CPU texture uploads that first had to read back GPU-written memory (`cpu_upload_readback`, with a description of both sides).
+
+With probes on, the first flushes are also described (`PROBE flush #n`: address, faulting thread, section base/size/context/format/size/synchronized), and the first readback waits log a backtrace (resolve the offsets with `llvm-addr2line -f -C -e build/bin/rpcs3`).
+
+Reproducible scenario: let the user create a savestate (Ctrl+S in the game window) at the problem spot, then replay it invisibly with copies of their data:
+
+- copy `dev_hdd0/game/<ID>` (hardlink only large read-only trees such as GT5's `PDIPFS`; real copies for files the game writes), `dev_hdd0/home/<user>`, the custom config, patches, the PPU/SPU/shader cache, `games.yml` (the savestate finds the disc by serial) and `dev_hdd0/game/＄locks/<ID>_v*` (otherwise RPCS3 tries to reinstall the disc's INSDIR package);
+- boot with `rpcs3 --no-gui --savestate <file>`; a savestate file passed without `--savestate` is rejected;
+- set the audio renderer of the copied config to `"Null"`, or the test plays sound on the user's speakers;
+- keep A/B switches in the same binary (`RPCS3_DISABLE_READBACK_FIX=1` for the readback change) so both sides share caches and build.
+
+Script used for GT5: `tools/gt5_research/probe_run.sh <binary> <savestate> <seconds> <tag>` and `probe_summary.py` (outside the repo, in the research workspace).
+
 ## Hardware claims
 
 - A fix that changes emulated hardware semantics needs evidence from a real PS3. Upstream asks for a test binary (PSL1GHT homebrew run via HEN) and compares hardware vs RPCS3 output, see [RPCS3#18171](https://github.com/RPCS3/rpcs3/issues/18171).

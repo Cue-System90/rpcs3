@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "Emu/perf_probe.h"
 #include "sys_mmapper.h"
 
 #include "Emu/Cell/PPUThread.h"
@@ -749,6 +750,7 @@ error_code sys_mmapper_free_shared_memory(ppu_thread& ppu, u32 mem_id)
 
 error_code sys_mmapper_map_shared_memory(ppu_thread& ppu, u32 addr, u32 mem_id, u64 flags)
 {
+	perf_probe::scoped probe(perf_probe::mmap_map);
 	ppu.state += cpu_flag::wait;
 
 	sys_mmapper.warning("sys_mmapper_map_shared_memory(addr=0x%x, mem_id=0x%x, flags=0x%x)", addr, mem_id, flags);
@@ -910,6 +912,7 @@ error_code sys_mmapper_search_and_map(ppu_thread& ppu, u32 start_addr, u32 mem_i
 
 error_code sys_mmapper_unmap_shared_memory(ppu_thread& ppu, u32 addr, vm::ptr<u32> mem_id)
 {
+	perf_probe::scoped probe(perf_probe::mmap_unmap);
 	ppu.state += cpu_flag::wait;
 
 	sys_mmapper.warning("sys_mmapper_unmap_shared_memory(addr=0x%x, mem_id=*0x%x)", addr, mem_id);

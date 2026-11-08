@@ -6,6 +6,7 @@
 
 #include "texture_cache_utils.h"
 #include "texture_cache_predictor.h"
+#include "Emu/perf_probe.h"
 #include "texture_cache_helpers.h"
 #include "texture_cache_blit_helpers.h"
 
@@ -823,6 +824,8 @@ namespace rsx
 
 			if (!sections_to_transfer.empty())
 			{
+				perf_probe::scoped probe_transfer(perf_probe::flush_retransfer);
+
 				// Batch all hard faults together
 				prepare_for_dma_transfers(cmd);
 
@@ -2186,6 +2189,56 @@ namespace rsx
 			return true;
 		}
 
+		// Completes a deferred flush only if no GPU work is needed: every section already holds a finished readback.
+		// Returns false without side effects otherwise, and the caller must take the regular (queue-synchronized) path.
+		template <typename ...Args>
+		bool flush_all_if_ready(commandbuffer_type& cmd, thrashed_set& data, Args&&... extras)
+		{
+			std::lock_guard lock(m_cache_mutex);
+
+			AUDIT(data.cause.deferred_flush());
+			AUDIT(!data.flushed);
+
+			if (m_cache_update_tag.load() != data.cache_tag || data.sections_to_flush.empty())
+			{
+				perf_probe::count(perf_probe::fast_no_tag);
+				return false;
+			}
+
+			if (!data.sections_to_exclude.empty())
+			{
+				perf_probe::count(perf_probe::fast_excluded);
+				return false;
+			}
+
+			for (const auto& surface : data.sections_to_flush)
+			{
+				if (!surface->is_synchronized())
+				{
+					perf_probe::count(perf_probe::fast_no_sync);
+					return false;
+				}
+
+				if (!surface->is_readback_complete())
+				{
+					perf_probe::count(perf_probe::fast_pending);
+					return false;
+				}
+
+				if (surface->get_memory_read_flags() == rsx::memory_read_flags::flush_always &&
+					m_ctx->ROP_sync_timestamp > surface->get_sync_timestamp())
+				{
+					// Needs a fresh transfer
+					perf_probe::count(perf_probe::fast_flush_always);
+					return false;
+				}
+			}
+
+			flush_set(cmd, data, {}, std::forward<Args>(extras)...);
+			unprotect_set(data);
+			return true;
+		}
+
 		template <typename ...Args>
 		bool flush_if_cache_miss_likely(commandbuffer_type& cmd, const address_range32 &range, Args&&... extras)
 		{
@@ -3328,6 +3381,36 @@ namespace rsx
 
 			// Invalidate
 			const address_range32 tex_range = address_range32::start_length(attributes.address, tex_size);
+
+			if (perf_probe::enabled())
+			{
+				// Describe CPU uploads that have to read back GPU-written memory first (each one is a full GPU sync)
+				static atomic_t<u32> s_reports{};
+				std::string desc;
+
+				for (auto It = m_storage.range_begin(tex_range.to_page_range(), locked_range, true); It != m_storage.range_end(); ++It)
+				{
+					const auto& sec = *It;
+
+					if (sec.is_flushable() && sec.overlaps(tex_range, section_bounds::confirmed_range))
+					{
+						fmt::append(desc, " | flushable base=0x%x size=0x%x ctx=%d fmt=0x%x %ux%u pitch=%u", sec.get_section_base(), sec.get_section_size(),
+							static_cast<int>(sec.get_context()), static_cast<u32>(sec.get_format()), sec.get_width(), sec.get_height(), sec.get_rsx_pitch());
+					}
+				}
+
+				if (!desc.empty())
+				{
+					perf_probe::count(perf_probe::cpu_upload_readback);
+
+					if (const u32 n = s_reports++; n < 20 || n % 300 == 0)
+					{
+						rsx_log.notice("PROBE cpu upload #%u: tex addr=0x%x gcm_fmt=0x%x %ux%ux%u pitch=%u swizzled=%d dim=%d mips=%u size=0x%x%s", n, attributes.address, attributes.gcm_format,
+							attributes.width, attributes.height, attributes.depth, attributes.pitch, attributes.swizzled, static_cast<int>(extended_dimension), attributes.mipmaps, tex_size, desc);
+					}
+				}
+			}
+
 			invalidate_range_impl_base(cmd, tex_range, invalidation_cause::read, {}, std::forward<Args>(extras)...);
 
 			// Upload from CPU. Note that sRGB conversion is handled in the FS

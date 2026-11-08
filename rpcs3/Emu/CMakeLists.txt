@@ -16,6 +16,7 @@ add_library(rpcs3_emu STATIC
     GDB.cpp
     title.cpp
     perf_meter.cpp
+    perf_probe.cpp
     perf_monitor.cpp
     IPC_config.cpp
     IPC_socket.cpp

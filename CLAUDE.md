@@ -6,8 +6,11 @@ Personal fork of [RPCS3/rpcs3](https://github.com/RPCS3/rpcs3), the open-source 
 ## Working with the user
 
 - Talk to the user in **German**. Write code, comments, commit messages and PR texts in **English** (upstream convention).
-- Work on a feature branch. Never push to `master`: it mirrors upstream plus the cloud template commit.
-- Do not open PRs against `RPCS3/rpcs3` unless the user explicitly asks for it.
+- Work on a feature branch. Never push to `master`: it mirrors upstream plus fork-only additions
+  (cloud template, `game-patches/`, README note). Changes reach `master` through PRs in this fork.
+- Track work in this fork's issue tracker (labels `gran-turismo-5`, `rendering`, `game-patch`, `upstream`, `needs-test`, `fork-maintenance`).
+- Do not open PRs against `RPCS3/rpcs3` unless the user explicitly asks for it. Upstream CI rejects PRs whose
+  commits name an AI agent (`Co-authored-by: Claude`, `claude-session:`); such PRs need commits written by the user.
 
 ## Repository layout
 
@@ -31,6 +34,25 @@ Cloud sessions have no GPU and no display, so the loop is:
 3. Tell the user in German what to test on CachyOS: branch name, game or scenario, relevant settings
    (renderer, SPU/PPU decoder, etc.), what to look for, and which lines of `RPCS3.log` to send back.
 4. Analyse the log or result the user reports and iterate.
+
+## Building locally (CachyOS desktop)
+
+Local sessions can build and run games directly. Checkout: `/mnt/NVME-DATA/Logo_work_progamming/rpcs3`.
+
+```bash
+git -c submodule.3rdparty/llvm/llvm.update=none submodule update --init --depth 1 --jobs 8
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DBUILD_LLVM=OFF -DUSE_LTO=OFF -DCMAKE_LINKER_TYPE=LLD -DUSE_SYSTEM_FFMPEG=ON -DUSE_NATIVE_INSTRUCTIONS=ON
+nice -n 15 ninja -C build -j24        # ~8 min from scratch, binary: build/bin/rpcs3
+```
+
+- `USE_LTO` defaults to ON; with clang it needs lld, so turn it off (or set `CMAKE_LINKER_TYPE=LLD`).
+- The FFmpeg prebuilt download from GitHub release assets hangs here; use the system FFmpeg.
+- System LLVM (23.x) works with `BUILD_LLVM=OFF`.
+- Never run test builds against the user's real config (`~/.config/rpcs3` = `console_emulation/PS3/rpcs3_data`).
+  Use isolated `XDG_CONFIG_HOME`/`XDG_CACHE_HOME` outside `/tmp` (RPCS3 refuses temporary locations), for example
+  `console_emulation/PS3/tools/gt5_research/xdg/`, and run windows inside `kwin_wayland --virtual`, never on the user's desktop.
+- Announce GPU-heavy runs to the user and stop them when asked.
 
 ## Building and testing (cloud sessions)
 
@@ -64,5 +86,10 @@ scripts/claude-cloud/build.sh --help
 
 Use **Sync fork** on GitHub, or locally: `git fetch upstream && git merge upstream/master`
 (`git remote add upstream https://github.com/RPCS3/rpcs3.git` if the remote is missing).
+
+- Pushing upstream commits that touch `.github/workflows/` needs the `workflow` scope on the GitHub token
+  (`gh auth refresh -h github.com -s workflow`, done by the user).
+- If upstream rewrites history again (as in Nov 2026), do not merge: rebase the fork-only commits onto
+  `upstream/master` and force-push `master`, then rebase the feature branches.
 
 Note: upstream's `.gitignore` lists `CLAUDE.md`; this file was added with `git add -f` and is tracked normally.

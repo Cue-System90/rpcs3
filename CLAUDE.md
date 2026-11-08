@@ -23,6 +23,9 @@ Personal fork of [RPCS3/rpcs3](https://github.com/RPCS3/rpcs3), the open-source 
 - `rpcs3/tests/` – GoogleTest unit tests (target `rpcs3_test`)
 - `3rdparty/` – git submodules and vendored libraries: do not edit
 - `.ci/`, `.github/workflows/` – upstream CI · `.claude/cloud/`, `scripts/claude-cloud/` – this cloud template
+- `game-patches/` – fork-only game patches · `docs/emulation-notes/` – fork-only reference: RSX and Cell hardware,
+  how RPCS3 emulates them, known divergences, debugging workflow. **Read it before working on a rendering or CPU bug**
+  and update it when you verify something new.
 
 ## Testing workflow
 

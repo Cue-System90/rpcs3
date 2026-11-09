@@ -60,8 +60,7 @@ public:
 	~VKVertexProgram();
 
 	ParamArray parr;
-	VkShaderModule handle = nullptr;
-	vk::glsl::shader shader;
+	mutable vk::glsl::shader shader; // compiled lazily, possibly on a pipeline compiler thread
 	std::vector<vk::glsl::program_input> uniforms;
 
 	// Quick attribute indices
@@ -78,7 +77,11 @@ public:
 	} binding_table;
 
 	void Decompile(const RSXVertexProgram& prog);
-	void Compile();
+
+	// Compiles the decompiled source to a shader module. Thread-safe and idempotent; may run on a pipeline compiler thread.
+	void Compile() const;
+	VkShaderModule get_handle() const { return shader.get_handle(); }
+
 	void SetInputs(std::vector<vk::glsl::program_input>& inputs);
 
 	u32 Flags() const { return m_ctrl; }

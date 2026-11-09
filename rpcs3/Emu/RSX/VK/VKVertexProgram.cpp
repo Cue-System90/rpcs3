@@ -543,11 +543,16 @@ void VKVertexProgram::Decompile(const RSXVertexProgram& prog)
 	shader.create(::glsl::program_domain::glsl_vertex_program, source);
 }
 
-void VKVertexProgram::Compile()
+void VKVertexProgram::Compile() const
 {
+	if (shader.get_handle())
+	{
+		return;
+	}
+
 	if (g_cfg.video.log_programs)
 		fs::write_file(fs::get_cache_dir() + "shaderlog/VertexProgram" + std::to_string(id) + ".spirv", fs::rewrite, shader.get_source());
-	handle = shader.compile();
+	shader.compile_once();
 }
 
 void VKVertexProgram::Delete()

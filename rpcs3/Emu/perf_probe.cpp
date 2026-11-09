@@ -79,7 +79,7 @@ namespace perf_probe
 	{
 		"av_ppu", "av_spu", "av_rsx", "av_other", "av_flush",
 		"mmap_map", "mmap_unmap", "rsx_iomap", "rsx_iounmap", "iolock_wait",
-		"flush_rsx_wait", "flush_all", "flush_retransfer", "flush_event_wait", "flush_fast", "fast_no_tag", "fast_no_sync", "fast_pending", "fast_flush_always", "fast_excluded", "cpu_upload_readback", "cpu_upload_skip", "audio_underrun", "audio_skip", "audio_partial", "audio_wait", "frame",
+		"flush_rsx_wait", "flush_all", "flush_retransfer", "flush_event_wait", "flush_fast", "fast_no_tag", "fast_no_sync", "fast_pending", "fast_flush_always", "fast_excluded", "cpu_upload_readback", "cpu_upload_skip", "audio_underrun", "audio_skip", "audio_partial", "audio_wait", "shader_decompile", "shader_compile", "frame",
 	};
 
 	static void report(u64 elapsed_ns) noexcept

@@ -36,6 +36,8 @@ namespace perf_probe
 		audio_skip,     // cellAudio gave up waiting for the game and dropped an audio period
 		audio_partial,  // cellAudio mixed a period in which some ports were not written in time
 		audio_wait,     // cellAudio waited ~1 ms for the game to write its audio
+		shader_decompile, // RSX ucode -> GLSL on the RSX thread (new vertex or fragment program)
+		shader_compile,   // GLSL -> SPIR-V + shader module (on a pipeline compiler thread when compiled asynchronously)
 		frame,       // time between emulated flips
 		count_
 	};

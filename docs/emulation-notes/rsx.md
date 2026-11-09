@@ -62,6 +62,7 @@ The RSX is an NVIDIA G70/NV47-family GPU (NV40 3D class `0x4097`). The CPU write
   - `ClampValue` implements the RSX precision modifiers.
   - fp16 is used only at "Shader Precision: Low".
   - On NVIDIA a small floor bias works around interpolation rounding (`low_precision_rounding`).
+- **Compile path of a new shader** (`Program/ProgramStateCache.h` → `VK/VKProgramBuffer.h`): `get_graphics_pipeline` first looks the vertex and fragment program up by ucode hash; an unknown one is decompiled to GLSL on the RSX thread (`VKTraits::recompile_*`, ~0.1 ms). Upstream also compiled it to SPIR-V right there (2-3 ms each, up to 13 ms), so a burst of new shaders stalled the frame by 100-160 ms although the mode was asynchronous; only the pipeline link (`vkCreateGraphicsPipelines`) ran on the compiler threads (`VKPipelineCompiler.cpp`). The fork hands the compiler thread a callback that compiles both shaders (`shader::compile_once`, idempotent because several pipelines may share a program) and then links. Until the pipeline exists, "Async with Shader Interpreter" draws with the interpreter, "Async (multi threaded)" skips the draw, "Recompiler only" compiles inline. The shader cache preload at boot (`add_pipeline_entry`) and depth-range emulation also compile inline. Measured with GT5 SSR5 and an empty cache: longest frame per 5 s interval fell from 97-160 ms to 17-70 ms, steady 60 fps 10 s earlier.
 
 ### Vulkan sampler state (`load_texture_env`, `VK/VKDraw.cpp`)
 

@@ -1521,10 +1521,12 @@ namespace rsx
 					if (surface->last_use_tag > cache_tag) [[ likely ]]
 					{
 						surface->on_write_fast(write_tag);
+						surface->on_gpu_write_all();
 					}
 					else
 					{
 						surface->on_write(write_tag, rsx::surface_state_flags::require_resolve, m_active_raster_type);
+						surface->on_gpu_write_all();
 					}
 				}
 			}
@@ -1535,10 +1537,12 @@ namespace rsx
 				if (zsurface->last_use_tag > cache_tag) [[ likely ]]
 				{
 					zsurface->on_write_fast(write_tag);
+					zsurface->on_gpu_write_all();
 				}
 				else
 				{
 					zsurface->on_write(write_tag, rsx::surface_state_flags::require_resolve, m_active_raster_type);
+					zsurface->on_gpu_write_all();
 				}
 			}
 		}

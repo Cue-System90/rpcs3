@@ -143,6 +143,12 @@ namespace rsx
 
 		std::vector<deferred_clipped_region<image_storage_type>> old_contents;
 
+		// Memory the emulated RSX has written through this surface: draws and clears cover all of it,
+		// blits only their destination rows. Everything else still holds what the surface was loaded or cleared with,
+		// so a CPU read of that memory does not need the surface data written back first.
+		rsx::address_range32 gpu_written_range{};
+		bool gpu_written_all = false;
+
 		// Surface properties
 		u32 rsx_pitch = 0;
 		u32 native_pitch = 0;
@@ -541,6 +547,21 @@ namespace rsx
 			return 0;
 		}
 
+		void on_gpu_write_all()
+		{
+			gpu_written_all = true;
+		}
+
+		void on_gpu_write(const rsx::address_range32& range)
+		{
+			gpu_written_range.set_min_max(range);
+		}
+
+		bool may_hold_gpu_data(const rsx::address_range32& range) const
+		{
+			return gpu_written_all || (gpu_written_range.valid() && gpu_written_range.overlaps(range));
+		}
+
 		template<typename T>
 		void set_old_contents(T* other)
 		{
@@ -554,6 +575,7 @@ namespace rsx
 			old_contents.emplace_back();
 			old_contents.back().source = other;
 			other->add_ref();
+			on_gpu_write_all();
 		}
 
 		template<typename T>
@@ -566,6 +588,7 @@ namespace rsx
 			old_contents.push_back(region.template cast<image_storage_type>());
 			auto &slice = old_contents.back();
 			region.source->add_ref();
+			on_gpu_write_all();
 
 			// Reverse normalization process if needed
 			if (normalized)
@@ -818,6 +841,12 @@ namespace rsx
 			rsx_pitch = ref->get_rsx_pitch();
 			last_use_tag = ref->last_use_tag;
 			raster_type = ref->raster_type;     // Can't actually cut up swizzled data
+
+			if (ref->gpu_written_all || ref->gpu_written_range.valid())
+			{
+				// The clone may sit at another address, so the exact range does not carry over
+				on_gpu_write_all();
+			}
 		}
 
 		bool is_locked() const

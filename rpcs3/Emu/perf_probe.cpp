@@ -38,11 +38,22 @@ namespace perf_probe
 		return s_null_audio_clock;
 	}
 
+	static const u32 s_rt_probe_addr = []() -> u32
+	{
+		const char* v = std::getenv("RPCS3_PROBE_RT_ADDR");
+		return v ? static_cast<u32>(std::strtoul(v, nullptr, 16)) : 0;
+	}();
+
+	u32 rt_probe_addr() noexcept
+	{
+		return s_enabled ? s_rt_probe_addr : 0;
+	}
+
 	static constexpr const char* s_names[count_] =
 	{
 		"av_ppu", "av_spu", "av_rsx", "av_other", "av_flush",
 		"mmap_map", "mmap_unmap", "rsx_iomap", "rsx_iounmap", "iolock_wait",
-		"flush_rsx_wait", "flush_all", "flush_retransfer", "flush_event_wait", "flush_fast", "fast_no_tag", "fast_no_sync", "fast_pending", "fast_flush_always", "fast_excluded", "cpu_upload_readback", "audio_underrun", "audio_skip", "audio_partial", "audio_wait", "frame",
+		"flush_rsx_wait", "flush_all", "flush_retransfer", "flush_event_wait", "flush_fast", "fast_no_tag", "fast_no_sync", "fast_pending", "fast_flush_always", "fast_excluded", "cpu_upload_readback", "cpu_upload_skip", "audio_underrun", "audio_skip", "audio_partial", "audio_wait", "frame",
 	};
 
 	static void report(u64 elapsed_ns) noexcept

@@ -30,7 +30,8 @@ namespace perf_probe
 		flush_event_wait, // wait for the GPU to signal a readback
 		flush_fast,       // attempt to complete a flush without a queue sync
 		fast_no_tag, fast_no_sync, fast_pending, fast_flush_always, fast_excluded, // reasons the fast path was not taken
-		cpu_upload_readback, // texture upload from CPU memory that first had to read back GPU-written data
+		cpu_upload_readback, // texture upload from CPU memory that overlaps GPU-written data
+		cpu_upload_skip,     // ... where an overlapping surface had not written that memory, so no readback was needed
 		audio_underrun, // audio device wanted more samples than cellAudio had queued (audible gap); time = missing audio
 		audio_skip,     // cellAudio gave up waiting for the game and dropped an audio period
 		audio_partial,  // cellAudio mixed a period in which some ports were not written in time
@@ -73,6 +74,9 @@ namespace perf_probe
 
 	// RPCS3_PROBE_AUDIO_CLOCK: the Null audio backend consumes audio in real time (silent stand-in for a device)
 	bool null_audio_clock() noexcept;
+
+	// RPCS3_PROBE_RT_ADDR=<hex>: describe draws and clears into the color/depth surface at this address (diagnostics only)
+	u32 rt_probe_addr() noexcept;
 
 	inline u64 now_ns() noexcept
 	{

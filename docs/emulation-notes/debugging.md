@@ -56,6 +56,11 @@ Fork-only timing probes (`rpcs3/Emu/perf_probe.*`) are compiled in but inactive.
 - texture cache write-protection faults per thread class (`av_ppu`, `av_spu`, `av_rsx`), faults that need a GPU readback (`av_flush`) and how that time splits up: waiting for the RSX thread (`flush_rsx_wait`), the transfer (`flush_all`, `flush_retransfer`) and the GPU signal (`flush_event_wait`);
 - `sys_mmapper` shared memory map/unmap, `sys_rsx` io map/unmap, contended RSX IO range locks (`iolock_wait`);
 - CPU texture uploads that first had to read back GPU-written memory (`cpu_upload_readback`, with a description of both sides).
+- cellAudio: periods it waited ~1 ms for the game to write its ports (`audio_wait`), periods it gave up and dropped (`audio_skip`, an audible click), periods mixed with some ports unwritten (`audio_partial`), and device underruns with the missing time (`audio_underrun`).
+
+Audio needs a backend that consumes in real time, otherwise cellAudio disables buffering and the game-side waits are never measured. `RPCS3_PROBE_AUDIO_CLOCK=1` makes the Null backend pull 10 ms of audio every 10 ms and discard it, so buffering behaves as with Cubeb while nothing is heard.
+
+What it showed for GT5 (Nov 2026): cellAudio is clocked by host time, so a slow game does not underrun the device; it shows up as `audio_skip` instead, because cellAudio waits at most 2 (all ports) or 4 (some ports) block periods for the game before dropping the block. Skips appeared only where frames ran long (after the race, ~29 fps). In the race the readback fix took `audio_wait` from ~100 per 5 s to 0. `Disable Sampling Skip` and `Enable Time Stretching` did not reduce the skips: the former makes cellAudio stop waiting for the game at once, and stretching only acts on device-side buffer fill.
 
 With probes on, the first flushes are also described (`PROBE flush #n`: address, faulting thread, section base/size/context/format/size/synchronized), and the first readback waits log a backtrace (resolve the offsets with `llvm-addr2line -f -C -e build/bin/rpcs3`).
 

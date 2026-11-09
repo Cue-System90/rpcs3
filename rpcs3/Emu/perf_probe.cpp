@@ -31,11 +31,18 @@ namespace perf_probe
 		return s_readback_fix_disabled;
 	}
 
+	static const bool s_null_audio_clock = std::getenv("RPCS3_PROBE_AUDIO_CLOCK") != nullptr;
+
+	bool null_audio_clock() noexcept
+	{
+		return s_null_audio_clock;
+	}
+
 	static constexpr const char* s_names[count_] =
 	{
 		"av_ppu", "av_spu", "av_rsx", "av_other", "av_flush",
 		"mmap_map", "mmap_unmap", "rsx_iomap", "rsx_iounmap", "iolock_wait",
-		"flush_rsx_wait", "flush_all", "flush_retransfer", "flush_event_wait", "flush_fast", "fast_no_tag", "fast_no_sync", "fast_pending", "fast_flush_always", "fast_excluded", "cpu_upload_readback", "frame",
+		"flush_rsx_wait", "flush_all", "flush_retransfer", "flush_event_wait", "flush_fast", "fast_no_tag", "fast_no_sync", "fast_pending", "fast_flush_always", "fast_excluded", "cpu_upload_readback", "audio_underrun", "audio_skip", "audio_partial", "audio_wait", "frame",
 	};
 
 	static void report(u64 elapsed_ns) noexcept

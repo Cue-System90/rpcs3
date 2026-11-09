@@ -31,6 +31,10 @@ namespace perf_probe
 		flush_fast,       // attempt to complete a flush without a queue sync
 		fast_no_tag, fast_no_sync, fast_pending, fast_flush_always, fast_excluded, // reasons the fast path was not taken
 		cpu_upload_readback, // texture upload from CPU memory that first had to read back GPU-written data
+		audio_underrun, // audio device wanted more samples than cellAudio had queued (audible gap); time = missing audio
+		audio_skip,     // cellAudio gave up waiting for the game and dropped an audio period
+		audio_partial,  // cellAudio mixed a period in which some ports were not written in time
+		audio_wait,     // cellAudio waited ~1 ms for the game to write its audio
 		frame,       // time between emulated flips
 		count_
 	};
@@ -66,6 +70,9 @@ namespace perf_probe
 
 	// A/B switch for testing: RPCS3_DISABLE_READBACK_FIX turns the readback latency changes off
 	bool readback_fix_disabled() noexcept;
+
+	// RPCS3_PROBE_AUDIO_CLOCK: the Null audio backend consumes audio in real time (silent stand-in for a device)
+	bool null_audio_clock() noexcept;
 
 	inline u64 now_ns() noexcept
 	{

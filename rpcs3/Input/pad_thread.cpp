@@ -24,6 +24,7 @@
 #include "Emu/Io/pad_config.h"
 #include "Emu/System.h"
 #include "Emu/system_config.h"
+#include "Emu/perf_probe.h"
 #include "Emu/RSX/Overlays/HomeMenu/overlay_home_menu.h"
 #include "Emu/RSX/Overlays/overlay_message.h"
 #include "Emu/Cell/lv2/sys_usbd.h"
@@ -605,6 +606,12 @@ void pad_thread::operator()()
 		}
 
 		apply_copilots();
+
+		if (m_pads[0] && perf_probe::enabled())
+		{
+			std::lock_guard lock(pad::g_pad_mutex);
+			perf_probe::apply_scripted_pad(*m_pads[0]);
+		}
 
 		if (Emu.IsRunning())
 		{

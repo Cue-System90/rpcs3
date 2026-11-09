@@ -10,6 +10,8 @@
 #include <array>
 #include <chrono>
 
+struct Pad;
+
 namespace perf_probe
 {
 	enum id : u32
@@ -76,6 +78,9 @@ namespace perf_probe
 	// A/B switch for testing: RPCS3_DISABLE_READBACK_FIX turns the readback latency changes off
 	bool readback_fix_disabled() noexcept;
 
+	// A/B switch for testing: RPCS3_DISABLE_ASYNC_SHADER_COMPILE compiles new shaders on the RSX thread again (upstream behaviour)
+	bool async_shader_compile_disabled() noexcept;
+
 	// RPCS3_PROBE_AUDIO_CLOCK: the Null audio backend consumes audio in real time (silent stand-in for a device)
 	bool null_audio_clock() noexcept;
 
@@ -105,6 +110,11 @@ namespace perf_probe
 
 	// Called on every emulated flip: records the frame time and prints a report every 5 seconds
 	void on_emu_flip() noexcept;
+
+	// RPCS3_PROBE_PAD=<flip>:<button>[,<flip>:<button>...] (buttons: cross, circle, square, triangle, start, select, up, down, left, right, l1, r1)
+	// presses the button on player 1's pad for 12 flips from the given flip, so that a savestate replay can navigate a menu without a window.
+	// Called by the pad thread every iteration; connects the pad if the Null handler left it unplugged.
+	void apply_scripted_pad(::Pad& pad) noexcept;
 
 	struct scoped
 	{

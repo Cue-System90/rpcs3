@@ -69,6 +69,13 @@ namespace vk
 				modules[1] = fragmentProgramData.get_handle();
 			};
 
+			if (perf_probe::async_shader_compile_disabled())
+			{
+				// A/B test: compile on the calling thread as upstream does
+				VkShaderModule modules[2];
+				get_modules(modules);
+			}
+
 			auto compiler = vk::get_pipe_compiler();
 			auto result = compiler->compile(
 				pipelineProperties,

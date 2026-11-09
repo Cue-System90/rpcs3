@@ -66,6 +66,8 @@ namespace perf_probe
 	extern std::array<counter, count_> g_counters;
 	extern atomic_t<u64> g_frames_over_20ms;
 	extern atomic_t<u64> g_frames_over_34ms;
+	extern atomic_t<u64> g_flip_count;     // emulated flips so far (only counted while probing)
+	extern atomic_t<u64> g_last_submit_ns; // last Vulkan primary command buffer submit (only while probing)
 
 	bool enabled() noexcept;
 

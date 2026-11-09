@@ -13,6 +13,8 @@ namespace perf_probe
 	std::array<counter, count_> g_counters{};
 	atomic_t<u64> g_frames_over_20ms{};
 	atomic_t<u64> g_frames_over_34ms{};
+	atomic_t<u64> g_flip_count{};
+	atomic_t<u64> g_last_submit_ns{};
 
 	static const bool s_enabled = std::getenv("RPCS3_PERF_PROBE") != nullptr;
 
@@ -106,6 +108,7 @@ namespace perf_probe
 
 		const u64 now = now_ns();
 		const u64 last = s_last_flip_ns.exchange(now);
+		g_flip_count++;
 
 		if (last)
 		{

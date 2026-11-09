@@ -56,6 +56,7 @@ Fork-only timing probes (`rpcs3/Emu/perf_probe.*`) are compiled in but inactive.
 - texture cache write-protection faults per thread class (`av_ppu`, `av_spu`, `av_rsx`), faults that need a GPU readback (`av_flush`) and how that time splits up: waiting for the RSX thread (`flush_rsx_wait`), the transfer (`flush_all`, `flush_retransfer`) and the GPU signal (`flush_event_wait`);
 - `sys_mmapper` shared memory map/unmap, `sys_rsx` io map/unmap, contended RSX IO range locks (`iolock_wait`);
 - CPU texture uploads over GPU-written memory (`cpu_upload_readback`, with a description of both sides and how many texture bytes the readback changed), and those whose readback could be skipped because the surface never wrote that range (`cpu_upload_skip`);
+- deferred flushes that try the no-sync path: `PROBE readback #n ... ready= age= flips_since= submitted_since=` gives the age of the GPU->CPU copy when the CPU reads it, how many flips happened since and whether a queue submit followed the copy (first 40, then every 300th);
 - `RPCS3_PROBE_RT_ADDR=<hex>`: describes draws and clears into the surface at that address (clip, scissor, viewport), blits that touch it and texture cache locks of it, with a backtrace of the first lock.
 - cellAudio: periods it waited ~1 ms for the game to write its ports (`audio_wait`), periods it gave up and dropped (`audio_skip`, an audible click), periods mixed with some ports unwritten (`audio_partial`), and device underruns with the missing time (`audio_underrun`).
 

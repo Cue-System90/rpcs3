@@ -2462,6 +2462,11 @@ void VKGSRender::patch_transform_constants(rsx::context* /*ctx*/, u32 index, u32
 
 void VKGSRender::close_and_submit_command_buffer(vk::fence* pFence, VkSemaphore wait_semaphore, VkSemaphore signal_semaphore, VkPipelineStageFlags pipeline_stage_flags)
 {
+	if (perf_probe::enabled())
+	{
+		perf_probe::g_last_submit_ns = perf_probe::now_ns();
+	}
+
 	ensure(!m_queue_status.test_and_set(flush_queue_state::flushing));
 
 	// Host MM sync before executing anything on the GPU

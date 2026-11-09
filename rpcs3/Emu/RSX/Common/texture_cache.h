@@ -2231,7 +2231,22 @@ namespace rsx
 					return false;
 				}
 
-				if (!surface->is_readback_complete())
+				const bool ready = surface->is_readback_complete();
+
+				if (perf_probe::enabled())
+				{
+					// When was the copy recorded, and has a submit happened since? (diagnostics only)
+					static atomic_t<u32> s_reports{};
+
+					if (const u32 n = s_reports++; n < 40 || n % 300 == 0)
+					{
+						const u64 now = perf_probe::now_ns();
+						rsx_log.notice("PROBE readback #%u base=0x%x ready=%d age=%uus flips_since=%u submitted_since=%d", n, surface->get_section_base(), ready,
+							(now - surface->probe_copy_ns) / 1000, perf_probe::g_flip_count - surface->probe_copy_flip, perf_probe::g_last_submit_ns > surface->probe_copy_ns);
+					}
+				}
+
+				if (!ready)
 				{
 					perf_probe::count(perf_probe::fast_pending);
 					return false;

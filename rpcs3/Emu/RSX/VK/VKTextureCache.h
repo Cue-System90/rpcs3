@@ -40,6 +40,13 @@ namespace vk
 
 		// DMA relevant data
 		std::unique_ptr<vk::event> dma_fence;
+
+	public:
+		// Diagnostics (RPCS3_PERF_PROBE): when the last GPU->CPU copy was recorded
+		u64 probe_copy_ns = 0;
+		u64 probe_copy_flip = 0;
+
+	private:
 		vk::render_device* m_device = nullptr;
 		vk::viewable_image* vram_texture = nullptr;
 

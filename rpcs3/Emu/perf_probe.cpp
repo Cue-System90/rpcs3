@@ -8,6 +8,8 @@
 
 LOG_CHANNEL(probe_log, "PROBE");
 
+extern atomic_t<bool> g_user_asked_for_screenshot;
+
 namespace perf_probe
 {
 	std::array<counter, count_> g_counters{};
@@ -50,6 +52,28 @@ namespace perf_probe
 	{
 		return s_enabled ? s_rt_probe_addr : 0;
 	}
+
+	// RPCS3_PROBE_SCREENSHOT_AT=<flip>[,<flip>...]: take a screenshot at these emulated flips (counted from boot or savestate load).
+	// Screenshots are named by the second, so keep them at least 60 flips apart.
+	static const std::vector<u64> s_screenshot_flips = []()
+	{
+		std::vector<u64> flips;
+
+		if (const char* v = std::getenv("RPCS3_PROBE_SCREENSHOT_AT"))
+		{
+			for (char* end = nullptr; *v; v = *end ? end + 1 : end)
+			{
+				flips.push_back(std::strtoull(v, &end, 10));
+
+				if (end == v)
+				{
+					break;
+				}
+			}
+		}
+
+		return flips;
+	}();
 
 	static constexpr const char* s_names[count_] =
 	{
@@ -108,7 +132,13 @@ namespace perf_probe
 
 		const u64 now = now_ns();
 		const u64 last = s_last_flip_ns.exchange(now);
-		g_flip_count++;
+		const u64 flip = ++g_flip_count;
+
+		if (std::find(s_screenshot_flips.begin(), s_screenshot_flips.end(), flip) != s_screenshot_flips.end())
+		{
+			probe_log.notice("Screenshot requested at flip %u", flip);
+			g_user_asked_for_screenshot = true;
+		}
 
 		if (last)
 		{

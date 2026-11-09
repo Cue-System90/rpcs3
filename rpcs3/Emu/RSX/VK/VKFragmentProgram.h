@@ -59,9 +59,8 @@ public:
 	~VKFragmentProgram();
 
 	ParamArray parr;
-	VkShaderModule handle = nullptr;
 	u32 id;
-	vk::glsl::shader shader;
+	mutable vk::glsl::shader shader; // compiled lazily, possibly on a pipeline compiler thread
 	std::vector<u32> constant_offsets;
 
 	std::array<u32, 4> output_color_masks{ {} };
@@ -87,8 +86,9 @@ public:
 	 */
 	void Decompile(const RSXFragmentProgram& prog);
 
-	/** Compile the decompiled fragment shader into a format we can use with OpenGL. */
-	void Compile();
+	/** Compile the decompiled fragment shader into a shader module. Thread-safe and idempotent; may run on a pipeline compiler thread. */
+	void Compile() const;
+	VkShaderModule get_handle() const { return shader.get_handle(); }
 
 private:
 	/** Deletes the shader and any stored information */

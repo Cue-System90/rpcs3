@@ -8,6 +8,8 @@
 
 #include "../Program/SPIRVCommon.h"
 
+#include <thread>
+
 namespace vk
 {
 	namespace glsl
@@ -125,10 +127,33 @@ namespace vk
 			return m_handle;
 		}
 
+		VkShaderModule shader::compile_once()
+		{
+			if (m_compile_state == 2)
+			{
+				return m_handle;
+			}
+
+			if (m_compile_state.compare_and_swap_test(0, 1))
+			{
+				compile();
+				m_compile_state = 2;
+				return m_handle;
+			}
+
+			while (m_compile_state != 2)
+			{
+				std::this_thread::yield();
+			}
+
+			return m_handle;
+		}
+
 		void shader::destroy()
 		{
 			m_source.clear();
 			m_compiled.clear();
+			m_compile_state = 0;
 
 			if (m_handle)
 			{

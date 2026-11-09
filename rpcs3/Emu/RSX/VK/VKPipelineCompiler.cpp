@@ -54,6 +54,11 @@ namespace vk
 					continue;
 				}
 
+				if (job.modules_func)
+				{
+					job.modules_func(job.graphics_modules);
+				}
+
 				auto compiled = int_compile_graphics_pipe(job.graphics_data, job.graphics_modules, job.inputs, {}, job.flags);
 				job.callback_func(compiled);
 			}
@@ -261,6 +266,24 @@ namespace vk
 		}
 
 		m_work_queue.push(get_create_info, vs_inputs, fs_inputs, flags, callback);
+		return {};
+	}
+
+	std::unique_ptr<glsl::program> pipe_compiler::compile(
+		const vk::pipeline_props &create_info,
+		shader_modules_callback_t get_modules,
+		op_flags flags, callback_t callback,
+		const std::vector<glsl::program_input>& vs_inputs,
+		const std::vector<glsl::program_input>& fs_inputs)
+	{
+		if (flags & COMPILE_INLINE)
+		{
+			VkShaderModule modules[2] = { VK_NULL_HANDLE, VK_NULL_HANDLE };
+			get_modules(modules);
+			return int_compile_graphics_pipe(create_info, modules, vs_inputs, fs_inputs, flags);
+		}
+
+		m_work_queue.push(create_info, get_modules, vs_inputs, fs_inputs, flags, callback);
 		return {};
 	}
 

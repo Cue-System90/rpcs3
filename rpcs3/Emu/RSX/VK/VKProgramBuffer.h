@@ -3,6 +3,7 @@
 #include "VKFragmentProgram.h"
 #include "VKPipelineCompiler.h"
 #include "../Program/ProgramStateCache.h"
+#include "Emu/perf_probe.h"
 
 namespace vk
 {
@@ -14,20 +15,22 @@ namespace vk
 		using pipeline_storage_type = std::unique_ptr<vk::glsl::program>;
 		using pipeline_properties = vk::pipeline_props;
 
+		// Decompilation (RSX ucode -> GLSL) stays on the calling thread because the pipeline needs its results (inputs, flags, masks).
+		// The expensive GLSL -> SPIR-V compilation is deferred to build_pipeline, where it runs on a pipeline compiler thread.
 		static
 			void recompile_fragment_program(const RSXFragmentProgram& RSXFP, fragment_program_type& fragmentProgramData, usz ID)
 		{
+			perf_probe::scoped probe(perf_probe::shader_decompile);
 			fragmentProgramData.Decompile(RSXFP);
 			fragmentProgramData.id = static_cast<u32>(ID);
-			fragmentProgramData.Compile();
 		}
 
 		static
 			void recompile_vertex_program(const RSXVertexProgram& RSXVP, vertex_program_type& vertexProgramData, usz ID)
 		{
+			perf_probe::scoped probe(perf_probe::shader_decompile);
 			vertexProgramData.Decompile(RSXVP);
 			vertexProgramData.id = static_cast<u32>(ID);
-			vertexProgramData.Compile();
 		}
 
 		static
@@ -56,11 +59,20 @@ namespace vk
 				compiler_flags |= vk::pipe_compiler::USE_LAST_PROVOKING_VERTEX;
 			}
 
+			// The program objects live in the program cache's maps, which outlive the pipeline compiler threads (see VKGSRender shutdown order)
+			auto get_modules = [&vertexProgramData, &fragmentProgramData](VkShaderModule (&modules)[2])
+			{
+				perf_probe::scoped probe(perf_probe::shader_compile);
+				vertexProgramData.Compile();
+				fragmentProgramData.Compile();
+				modules[0] = vertexProgramData.get_handle();
+				modules[1] = fragmentProgramData.get_handle();
+			};
+
 			auto compiler = vk::get_pipe_compiler();
 			auto result = compiler->compile(
 				pipelineProperties,
-				vertexProgramData.handle,
-				fragmentProgramData.handle,
+				get_modules,
 				compiler_flags, callback,
 				vertexProgramData.uniforms,
 				fragmentProgramData.uniforms);

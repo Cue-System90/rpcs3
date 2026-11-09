@@ -66,6 +66,7 @@ namespace vk
 
 		using callback_t = std::function<void(std::unique_ptr<glsl::program>&)>;
 		using graphics_pipe_create_callback_t = std::function<VkGraphicsPipelineCreateInfo()>;
+		using shader_modules_callback_t = std::function<void(VkShaderModule (&modules)[2])>; // compiles the VS/FS on the compiler thread
 
 		pipe_compiler();
 		~pipe_compiler();
@@ -97,6 +98,15 @@ namespace vk
 			const std::vector<glsl::program_input>& vs_inputs,
 			const std::vector<glsl::program_input>& fs_inputs);
 
+		// Like the VkShaderModule variant, but the shader modules are produced by get_modules on the compiler thread,
+		// so that GLSL -> SPIR-V compilation of new shaders does not stall the caller (RSX thread)
+		std::unique_ptr<glsl::program> compile(
+			const vk::pipeline_props &create_info,
+			shader_modules_callback_t get_modules,
+			op_flags flags, callback_t callback,
+			const std::vector<glsl::program_input>& vs_inputs,
+			const std::vector<glsl::program_input>& fs_inputs);
+
 		void operator()();
 
 	private:
@@ -120,6 +130,7 @@ namespace vk
 			bool is_graphics_job;
 			callback_t callback_func;
 			graphics_pipe_create_callback_t create_info_func;
+			shader_modules_callback_t modules_func;
 
 			vk::pipeline_props graphics_data;
 			compute_pipeline_props compute_data;
@@ -140,6 +151,27 @@ namespace vk
 				graphics_data = props;
 				graphics_modules[0] = modules[0];
 				graphics_modules[1] = modules[1];
+				is_graphics_job = true;
+				flags = flags_;
+
+				inputs.reserve(vs_in.size() + fs_in.size());
+				inputs.insert(inputs.end(), vs_in.begin(), vs_in.end());
+				inputs.insert(inputs.end(), fs_in.begin(), fs_in.end());
+			}
+
+			pipe_compiler_job(
+				const vk::pipeline_props& props,
+				shader_modules_callback_t get_modules,
+				const std::vector<glsl::program_input>& vs_in,
+				const std::vector<glsl::program_input>& fs_in,
+				op_flags flags_,
+				callback_t func)
+			{
+				callback_func = func;
+				modules_func = get_modules;
+				graphics_data = props;
+				graphics_modules[0] = VK_NULL_HANDLE;
+				graphics_modules[1] = VK_NULL_HANDLE;
 				is_graphics_job = true;
 				flags = flags_;
 

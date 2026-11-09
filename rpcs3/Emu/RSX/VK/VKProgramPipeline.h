@@ -6,6 +6,8 @@
 #include "vkutils/descriptors.h"
 #include "vkutils/ex.h"
 
+#include "util/atomic.hpp"
+
 #include <string>
 #include <vector>
 #include <variant>
@@ -117,6 +119,7 @@ namespace vk
 			VkShaderModule m_handle = VK_NULL_HANDLE;
 			std::string m_source;
 			std::vector<u32> m_compiled;
+			atomic_t<u32> m_compile_state = 0; // 0 = source only, 1 = being compiled, 2 = module ready
 
 		public:
 			shader() = default;
@@ -125,6 +128,9 @@ namespace vk
 			void create(::glsl::program_domain domain, const std::string& source);
 
 			VkShaderModule compile();
+
+			// Thread-safe variant for shaders shared between pipeline compiler threads: the first caller compiles, the others wait for the module
+			VkShaderModule compile_once();
 
 			void destroy();
 

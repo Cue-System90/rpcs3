@@ -642,11 +642,16 @@ void VKFragmentProgram::Decompile(const RSXFragmentProgram& prog)
 	shader.create(::glsl::program_domain::glsl_fragment_program, source);
 }
 
-void VKFragmentProgram::Compile()
+void VKFragmentProgram::Compile() const
 {
+	if (shader.get_handle())
+	{
+		return;
+	}
+
 	if (g_cfg.video.log_programs)
 		fs::write_file(fs::get_cache_dir() + "shaderlog/FragmentProgram" + std::to_string(id) + ".spirv", fs::rewrite, shader.get_source());
-	handle = shader.compile();
+	shader.compile_once();
 }
 
 void VKFragmentProgram::Delete()

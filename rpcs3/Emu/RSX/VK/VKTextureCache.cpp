@@ -388,6 +388,12 @@ namespace vk
 
 		synchronized = true;
 		sync_timestamp = rsx::get_shared_tag();
+
+		if (perf_probe::enabled())
+		{
+			probe_copy_ns = perf_probe::now_ns();
+			probe_copy_flip = perf_probe::g_flip_count;
+		}
 	}
 
 	void texture_cache::on_section_destroyed(cached_texture_section& tex)

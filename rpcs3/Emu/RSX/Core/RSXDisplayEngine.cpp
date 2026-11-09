@@ -1,4 +1,5 @@
 #include "stdafx.h"
+#include "Emu/perf_probe.h"
 #include "RSXDisplayEngine.h"
 #include "RSXDisplayOutput.h"
 #include "RSXPowerMgmt.h"
@@ -109,6 +110,36 @@ namespace rsx
 		handle_emu_flip(m_async_flip_request.buffer);
 	}
 
+	void display_engine::wait_for_frame_limit(u64 target_time)
+	{
+		// Sleep in short slices and service backend requests in between. Other threads ask the RSX thread to submit its
+		// command buffer when they read back GPU data (texture cache flushes). A single long sleep made such a thread wait
+		// for the rest of the frame limiter delay, which is most of a frame when the host GPU is fast.
+		constexpr u64 slice_us = 500;
+
+		while (true)
+		{
+			const u64 now = get_system_time();
+
+			if (now + 100 >= target_time)
+			{
+				break;
+			}
+
+			if (!lv2_obj::wait_timeout(std::min<u64>(target_time - now, slice_us), nullptr, false) || m_pump->is_stopped())
+			{
+				break;
+			}
+
+			if (m_pump->eng_interrupt_mask & rsx::backend_interrupt)
+			{
+				// Only flush requests are serviced here (lock_wait skips state updates). The interrupt bit stays set,
+				// so the regular FIFO loop still runs the complete local task afterwards.
+				m_pump->renderer()->on_local_task(FIFO::state::lock_wait);
+			}
+		}
+	}
+
 	void display_engine::handle_emu_flip(u32 buffer)
 	{
 		if (m_queued_flip.in_progress)
@@ -158,7 +189,14 @@ namespace rsx
 				if (target_rsx_flip_time > time + 1000)
 				{
 					const auto delay_us = target_rsx_flip_time - time;
-					lv2_obj::wait_timeout(delay_us, nullptr, false);
+					if (perf_probe::readback_fix_disabled())
+					{
+						lv2_obj::wait_timeout(delay_us, nullptr, false);
+					}
+					else
+					{
+						wait_for_frame_limit(target_rsx_flip_time);
+					}
 					m_pump->performance_counters.idle_time += delay_us;
 				}
 			}
@@ -268,6 +306,7 @@ namespace rsx
 		if (info.emu_flip)
 		{
 			m_pump->performance_counters.sampled_frames++;
+			perf_probe::on_emu_flip();
 
 			if (m_pause_after_x_flips && m_pause_after_x_flips-- == 1)
 			{

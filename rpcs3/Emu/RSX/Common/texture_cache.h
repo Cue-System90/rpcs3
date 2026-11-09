@@ -6,6 +6,7 @@
 
 #include "texture_cache_utils.h"
 #include "texture_cache_predictor.h"
+#include "Emu/perf_probe.h"
 #include "texture_cache_helpers.h"
 #include "texture_cache_blit_helpers.h"
 
@@ -823,6 +824,8 @@ namespace rsx
 
 			if (!sections_to_transfer.empty())
 			{
+				perf_probe::scoped probe_transfer(perf_probe::flush_retransfer);
+
 				// Batch all hard faults together
 				prepare_for_dma_transfers(cmd);
 
@@ -1374,6 +1377,18 @@ namespace rsx
 		template <typename ...FlushArgs, typename ...Args>
 		section_storage_type* lock_memory_region_impl(commandbuffer_type& cmd, image_storage_type* image, const address_range32& rsx_range, bool is_active_surface, u16 width, u16 height, u32 pitch, Args&&... extras)
 		{
+			if (const u32 probe_addr = perf_probe::rt_probe_addr(); probe_addr && rsx_range.overlaps(address_range32::start_length(probe_addr, 1)))
+			{
+				static atomic_t<u32> s_lock_reports{}, s_lock_bt{};
+
+				if (const u32 n = s_lock_reports++; n < 40 || n % 300 == 0)
+				{
+					rsx_log.notice("PROBE rt lock #%u: range=0x%x-0x%x active=%d %ux%u pitch=%u", n, rsx_range.start, rsx_range.end, is_active_surface, width, height, pitch);
+				}
+
+				perf_probe::log_backtrace_once("rt lock", s_lock_bt, 2);
+			}
+
 			// Find a cached section to use
 			image_section_attributes_t search_desc = { .gcm_format = RSX_GCM_FORMAT_IGNORED, .width = width, .height = height };
 			section_storage_type& region = *find_cached_texture(rsx_range, search_desc, true, true, false);
@@ -2183,6 +2198,71 @@ namespace rsx
 				invalidate_range_impl_base(cmd, data.fault_range, data.cause.undefer(), on_data_transfer_completed, std::forward<Args>(extras)...);
 			}
 
+			return true;
+		}
+
+		// Completes a deferred flush only if no GPU work is needed: every section already holds a finished readback.
+		// Returns false without side effects otherwise, and the caller must take the regular (queue-synchronized) path.
+		template <typename ...Args>
+		bool flush_all_if_ready(commandbuffer_type& cmd, thrashed_set& data, Args&&... extras)
+		{
+			std::lock_guard lock(m_cache_mutex);
+
+			AUDIT(data.cause.deferred_flush());
+			AUDIT(!data.flushed);
+
+			if (m_cache_update_tag.load() != data.cache_tag || data.sections_to_flush.empty())
+			{
+				perf_probe::count(perf_probe::fast_no_tag);
+				return false;
+			}
+
+			if (!data.sections_to_exclude.empty())
+			{
+				perf_probe::count(perf_probe::fast_excluded);
+				return false;
+			}
+
+			for (const auto& surface : data.sections_to_flush)
+			{
+				if (!surface->is_synchronized())
+				{
+					perf_probe::count(perf_probe::fast_no_sync);
+					return false;
+				}
+
+				const bool ready = surface->is_readback_complete();
+
+				if (perf_probe::enabled())
+				{
+					// When was the copy recorded, and has a submit happened since? (diagnostics only)
+					static atomic_t<u32> s_reports{};
+
+					if (const u32 n = s_reports++; n < 40 || n % 300 == 0)
+					{
+						const u64 now = perf_probe::now_ns();
+						rsx_log.notice("PROBE readback #%u base=0x%x ready=%d age=%uus flips_since=%u submitted_since=%d", n, surface->get_section_base(), ready,
+							(now - surface->probe_copy_ns) / 1000, perf_probe::g_flip_count - surface->probe_copy_flip, perf_probe::g_last_submit_ns > surface->probe_copy_ns);
+					}
+				}
+
+				if (!ready)
+				{
+					perf_probe::count(perf_probe::fast_pending);
+					return false;
+				}
+
+				if (surface->get_memory_read_flags() == rsx::memory_read_flags::flush_always &&
+					m_ctx->ROP_sync_timestamp > surface->get_sync_timestamp())
+				{
+					// Needs a fresh transfer
+					perf_probe::count(perf_probe::fast_flush_always);
+					return false;
+				}
+			}
+
+			flush_set(cmd, data, {}, std::forward<Args>(extras)...);
+			unprotect_set(data);
 			return true;
 		}
 
@@ -3328,7 +3408,93 @@ namespace rsx
 
 			// Invalidate
 			const address_range32 tex_range = address_range32::start_length(attributes.address, tex_size);
-			invalidate_range_impl_base(cmd, tex_range, invalidation_cause::read, {}, std::forward<Args>(extras)...);
+
+			std::vector<u8> probe_before;
+			u32 probe_report = 0;
+
+			if (perf_probe::enabled())
+			{
+				// Describe CPU uploads that have to read back GPU-written memory first (each one is a full GPU sync)
+				static atomic_t<u32> s_reports{};
+				std::string desc;
+
+				for (auto It = m_storage.range_begin(tex_range.to_page_range(), locked_range, true); It != m_storage.range_end(); ++It)
+				{
+					const auto& sec = *It;
+
+					if (sec.is_flushable() && sec.overlaps(tex_range, section_bounds::confirmed_range))
+					{
+						fmt::append(desc, " | flushable base=0x%x size=0x%x ctx=%d fmt=0x%x %ux%u pitch=%u read_flags=%d synced=%d sync_ts=%llu rop_ts=%llu", sec.get_section_base(), sec.get_section_size(),
+							static_cast<int>(sec.get_context()), static_cast<u32>(sec.get_format()), sec.get_width(), sec.get_height(), sec.get_rsx_pitch(),
+							static_cast<int>(sec.get_memory_read_flags()), sec.is_synchronized(), sec.get_sync_timestamp(), m_ctx->ROP_sync_timestamp);
+					}
+				}
+
+				if (!desc.empty())
+				{
+					perf_probe::count(perf_probe::cpu_upload_readback);
+
+					if (const u32 n = s_reports++; n < 20 || n % 300 == 0)
+					{
+						rsx_log.notice("PROBE cpu upload #%u: tex addr=0x%x gcm_fmt=0x%x %ux%ux%u pitch=%u swizzled=%d dim=%d mips=%u size=0x%x%s", n, attributes.address, attributes.gcm_format,
+							attributes.width, attributes.height, attributes.depth, attributes.pitch, attributes.swizzled, static_cast<int>(extended_dimension), attributes.mipmaps, tex_size, desc);
+
+						// Does reading the target back change the texture bytes at all?
+						probe_before.assign(vm::get_super_ptr<const u8>(attributes.address), vm::get_super_ptr<const u8>(attributes.address) + tex_size);
+						probe_report = n;
+					}
+				}
+			}
+
+			// Write back GPU data before reading memory, unless the overlapping surfaces never wrote this range on the GPU.
+			// GT5 builds a DoF blur chain with blits that declare a 512x512 target but write a few rows only; the target
+			// then covers a DXT5 texture that lies right behind the chain, and reading it back cost a full GPU sync every frame.
+			bool needs_writeback = false;
+
+			for (auto It = m_storage.range_begin(tex_range.to_page_range(), locked_range, true); It != m_storage.range_end(); ++It)
+			{
+				const auto& sec = *It;
+
+				if (!sec.is_flushable() || !sec.overlaps(tex_range.to_page_range(), section_bounds::locked_range))
+				{
+					continue;
+				}
+
+				if (sec.get_context() == texture_upload_context::framebuffer_storage && !perf_probe::readback_fix_disabled())
+				{
+					if (const auto surface = sec.get_render_target(); surface && !surface->may_hold_gpu_data(tex_range))
+					{
+						perf_probe::count(perf_probe::cpu_upload_skip);
+						continue;
+					}
+				}
+
+				needs_writeback = true;
+				break;
+			}
+
+			if (needs_writeback)
+			{
+				invalidate_range_impl_base(cmd, tex_range, invalidation_cause::read, {}, std::forward<Args>(extras)...);
+			}
+
+			if (!probe_before.empty())
+			{
+				const u8* now = vm::get_super_ptr<const u8>(attributes.address);
+				u32 changed = 0, first = umax, last = 0;
+
+				for (u32 i = 0; i < tex_size; i++)
+				{
+					if (now[i] != probe_before[i])
+					{
+						changed++;
+						first = std::min(first, i);
+						last = i;
+					}
+				}
+
+				rsx_log.notice("PROBE cpu upload #%u: readback changed %u of 0x%x texture bytes (first=0x%x last=0x%x)", probe_report, changed, tex_size, changed ? first : 0, last);
+			}
 
 			// Upload from CPU. Note that sRGB conversion is handled in the FS
 			auto uploaded = upload_image_from_cpu(cmd, tex_range, attributes.width, attributes.height, attributes.depth, tex.get_exact_mipmap_count(), attributes.pitch, attributes.gcm_format,
@@ -3352,6 +3518,24 @@ namespace rsx
 			// Local working copy. We may modify the descriptors for optimization purposes
 			auto src = src_info;
 			auto dst = dst_info;
+
+			if (const u32 probe_addr = perf_probe::rt_probe_addr())
+			{
+				const auto probe_range = address_range32::start_length(probe_addr, 0x200000);
+				const auto dst_r = address_range32::start_length(dst.rsx_address, std::max<u32>(dst.pitch * (dst.clip_y + dst.clip_height), 1));
+				const auto src_r = address_range32::start_length(src.rsx_address, std::max<u32>(src.pitch * (src.offset_y + src.height), 1));
+				static atomic_t<u32> s_blit_reports{};
+
+				if ((dst_r.overlaps(probe_range) || src_r.overlaps(probe_range)))
+				{
+					if (const u32 n = s_blit_reports++; n < 60 || n % 300 == 0)
+					{
+						rsx_log.notice("PROBE blit #%u: src=0x%x %ux%u@%u,%u pitch=%u fmt=%d -> dst=0x%x %ux%u clip=%ux%u@%u,%u pitch=%u fmt=%d swz=%d",
+							n, src.rsx_address, src.width, src.height, src.offset_x, src.offset_y, src.pitch, static_cast<int>(src.format),
+							dst.rsx_address, dst.width, dst.height, dst.clip_width, dst.clip_height, dst.clip_x, dst.clip_y, dst.pitch, static_cast<int>(dst.format), dst.swizzled);
+					}
+				}
+			}
 
 			bool src_is_render_target = false;
 			bool dst_is_render_target = false;
@@ -3836,6 +4020,7 @@ namespace rsx
 			{
 				ensure(dst_is_render_target);
 				dst_subres.surface->on_write_copy(rsx::get_shared_tag(), false, raster_type);
+				dst_subres.surface->on_gpu_write(dst_range);
 
 				// We use the full surface range here. Blit resources are always locked after writing regardless of WCB/WDB settings.
 				result.dst_range = dst_subres.surface->get_memory_range();

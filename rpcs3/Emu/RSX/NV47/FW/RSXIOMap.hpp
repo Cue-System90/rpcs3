@@ -3,6 +3,7 @@
 #include <util/types.hpp>
 #include "Utilities/mutex.h"
 #include "Emu/CPU/CPUThread.h"
+#include "Emu/perf_probe.h"
 
 namespace rsx
 {
@@ -71,6 +72,8 @@ namespace rsx
 
 				if (!mutex_.try_lock()) [[ unlikely ]]
 				{
+					perf_probe::scoped probe(perf_probe::iolock_wait);
+
 					if (self)
 					{
 						added_wait |= !self->state.test_and_set(cpu_flag::wait);

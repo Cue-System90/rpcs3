@@ -71,6 +71,7 @@ namespace rsx
 		u32 m_pause_after_x_flips = 0;
 
 		void handle_emu_flip(u32 buffer);
+		void wait_for_frame_limit(u64 target_time);
 
 	public:
 		void init(thread* pump, display_output* output);

@@ -7,6 +7,7 @@
 #include "Emu/Cell/lv2/sys_process.h"
 #include "Emu/RSX/RSXThread.h"
 #include "Emu/system_config.h"
+#include "Emu/perf_probe.h"
 #include "Thread.h"
 #include "Utilities/JIT.h"
 #include <cfenv>
@@ -1593,7 +1594,16 @@ bool handle_access_violation(u32 addr, bool is_writing, bool is_exec, ucontext_t
 			state_changed = vm::temporary_unlock(*cpu);
 		}
 
+		const u64 probe_start = perf_probe::enabled() ? perf_probe::now_ns() : 0;
+
 		bool handled = rsx::g_access_violation_handler(addr, is_writing);
+
+		if (probe_start && handled)
+		{
+			const auto cls = cpu ? cpu->get_class() : thread_class::general;
+			const perf_probe::id probe_id = cls == thread_class::ppu ? perf_probe::av_ppu : cls == thread_class::spu ? perf_probe::av_spu : cls == thread_class::rsx ? perf_probe::av_rsx : perf_probe::av_other;
+			perf_probe::add(probe_id, perf_probe::now_ns() - probe_start);
+		}
 
 		if (state_changed && (cpu->state += cpu_flag::temp, cpu->test_stopped()))
 		{

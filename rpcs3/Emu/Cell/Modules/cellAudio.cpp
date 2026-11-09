@@ -14,6 +14,7 @@
 #include "util/asm.hpp"
 #include "util/vm.hpp"
 #include "sysPrxForUser.h"
+#include "Emu/perf_probe.h"
 #include "cellAudio.h"
 #include "util/video_provider.h"
 
@@ -101,7 +102,7 @@ void cell_audio_config::reset(bool backend_changed)
 	audio_buffer_length = AUDIO_BUFFER_SAMPLES * audio_channels;
 
 	desired_buffer_duration = std::max(static_cast<s64>(audio_min_buffer_duration * 1000), raw.desired_buffer_duration) * 1000llu;
-	buffering_enabled = raw.buffering_enabled && raw.renderer != audio_renderer::null;
+	buffering_enabled = raw.buffering_enabled && (raw.renderer != audio_renderer::null || perf_probe::null_audio_clock());
 
 	minimum_block_period = audio_block_period / 2;
 	maximum_block_period = (6 * audio_block_period) / 5;
@@ -198,7 +199,15 @@ u32 audio_ringbuffer::backend_write_callback(u32 size, void *buf)
 {
 	if (!backend_active.observe()) backend_active = true;
 
-	return static_cast<u32>(cb_ringbuf.pop(buf, size, true));
+	const u32 popped = static_cast<u32>(cb_ringbuf.pop(buf, size, true));
+
+	if (popped < size && perf_probe::enabled())
+	{
+		const u64 bytes_per_second = u64{cfg.backend_ch_cnt} * cfg.audio_sampling_rate * cfg.audio_sample_size;
+		perf_probe::add(perf_probe::audio_underrun, (size - popped) * 1'000'000'000ull / std::max<u64>(bytes_per_second, 1));
+	}
+
+	return popped;
 }
 
 void audio_ringbuffer::backend_state_callback(AudioStateEvent event)
@@ -1131,6 +1140,7 @@ void cell_audio_thread::operator()()
 					{
 						// There's no audio in any buffer, simply advance time and hope the game recovers
 						cellAudio.trace("advancing time: untouched=%u/%u (expected=%u), enqueued_buffers=%llu", untouched, active_ports, untouched_expected, enqueued_buffers);
+						perf_probe::count(perf_probe::audio_skip);
 						advance(timestamp);
 						continue;
 					}
@@ -1140,11 +1150,13 @@ void cell_audio_thread::operator()()
 					// touched and untouched. Mix what is there instead: the untouched ports were memset, so
 					// they contribute silence, which is exactly what they hold.
 					cellAudio.trace("mixing partially untouched buffers: untouched=%u/%u, enqueued_buffers=%llu", untouched, active_ports, enqueued_buffers);
+					perf_probe::count(perf_probe::audio_partial);
 					waited_long_enough = true;
 				}
 				else
 				{
 					cellAudio.trace("waiting: untouched=%u/%u (expected=%u), enqueued_buffers=%llu", untouched, active_ports, untouched_expected, enqueued_buffers);
+					perf_probe::count(perf_probe::audio_wait);
 					thread_ctrl::wait_for(1000);
 					continue;
 				}

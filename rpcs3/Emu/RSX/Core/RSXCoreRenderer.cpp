@@ -7,6 +7,7 @@
 #include "Emu/RSX/Utils/color_utils.hpp"
 #include "Emu/RSX/rsx_methods.h"
 #include "Emu/system_config.h"
+#include "Emu/perf_probe.h"
 
 #include "Emu/RSX/NV47/HW/context_accessors.define.h"
 
@@ -405,8 +406,50 @@ namespace rsx
 		RSX(m_ctx)->renderer()->begin_draw();
 	}
 
+	static void probe_describe_target_write(rsx::context* ctx, const char* what, u32 extra)
+	{
+		const u32 probe_addr = perf_probe::rt_probe_addr();
+
+		if (!probe_addr)
+		{
+			return;
+		}
+
+		const auto& regs = *REGS(ctx);
+		const auto colors = RSX(ctx)->core().graph().get_color_surface_addresses();
+		const u32 zeta = RSX(ctx)->core().graph().get_zeta_surface_address();
+		int slot = -1;
+
+		for (int i = 0; i < 4; i++)
+		{
+			if (colors[i] == probe_addr)
+			{
+				slot = i;
+			}
+		}
+
+		if (slot < 0 && zeta != probe_addr)
+		{
+			return;
+		}
+
+		static atomic_t<u32> s_reports{};
+
+		if (const u32 n = s_reports++; n < 400 || n % 500 == 0)
+		{
+			rsx_log.notice("PROBE rt write #%u: %s(0x%x) slot=%d zeta=%d target=%d clip=%ux%u@%u,%u scissor=%ux%u@%u,%u viewport=%ux%u@%u,%u color_fmt=%d pitch=%u",
+				n, what, extra, slot, zeta == probe_addr, static_cast<int>(regs.surface_color_target()),
+				regs.surface_clip_width(), regs.surface_clip_height(), regs.surface_clip_origin_x(), regs.surface_clip_origin_y(),
+				regs.scissor_width(), regs.scissor_height(), regs.scissor_origin_x(), regs.scissor_origin_y(),
+				regs.viewport_width(), regs.viewport_height(), regs.viewport_origin_x(), regs.viewport_origin_y(),
+				static_cast<int>(regs.surface_color()), slot >= 0 ? regs.surface_pitch(slot) : regs.surface_z_pitch());
+		}
+	}
+
 	void core_renderer::end()
 	{
+		probe_describe_target_write(m_ctx, "draw", 0);
+
 		if (should_skip_draw())
 		{
 			execute_nop_draw();
@@ -658,6 +701,7 @@ namespace rsx
 
 	void core_renderer::clear(rsx::flags32_t arg)
 	{
+		probe_describe_target_write(m_ctx, "clear", arg);
 		if (m_ctx->frame_skip.skip_current_frame)
 		{
 			return;

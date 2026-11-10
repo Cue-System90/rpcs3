@@ -74,6 +74,10 @@ namespace perf_probe
 	// A/B switch for testing: RPCS3_DISABLE_READBACK_FIX turns the readback latency changes off
 	bool readback_fix_disabled() noexcept;
 
+	// RPCS3_PROBE_SAVESTATE_PATCHES: apply the enabled game patches to the main executable when a savestate is loaded
+	// (normally skipped because the savestate holds the patched memory of the original boot), so patches can be tested on savestates
+	bool savestate_patches() noexcept;
+
 	// RPCS3_PROBE_AUDIO_CLOCK: the Null audio backend consumes audio in real time (silent stand-in for a device)
 	bool null_audio_clock() noexcept;
 

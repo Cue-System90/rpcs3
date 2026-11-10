@@ -9,6 +9,7 @@
 #include "Crypto/unself.h"
 #include "Loader/ELF.h"
 #include "Emu/System.h"
+#include "Emu/perf_probe.h"
 #include "Emu/system_config.h"
 #include "Emu/VFS.h"
 
@@ -2469,7 +2470,9 @@ bool ppu_load_exec(const ppu_exec_object& elf, bool virtual_load, const std::str
 
 	// Apply the patch
 	std::vector<u32> applied;
-	g_fxo->get<patch_engine>().apply(applied, !ar ? hash : std::string{}, [&](u32 addr, u32 size) { return _main.get_ptr<u8>(addr, size);  });
+	// Fork: RPCS3_PROBE_SAVESTATE_PATCHES applies the patches to the restored memory of a savestate as well (testing aid)
+	const bool patch_main = !ar || perf_probe::savestate_patches();
+	g_fxo->get<patch_engine>().apply(applied, patch_main ? hash : std::string{}, [&](u32 addr, u32 size) { return _main.get_ptr<u8>(addr, size);  });
 
 	if (!ar && !Emu.GetTitleID().empty())
 	{

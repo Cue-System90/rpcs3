@@ -3,6 +3,7 @@
 
 #include "Utilities/stack_trace.h"
 #include "Emu/CPU/CPUThread.h"
+#include "Emu/Memory/vm.h"
 
 #include <cstdlib>
 
@@ -34,6 +35,30 @@ namespace perf_probe
 	{
 		return s_readback_fix_disabled;
 	}
+
+	static const bool s_savestate_patches = std::getenv("RPCS3_PROBE_SAVESTATE_PATCHES") != nullptr;
+
+	bool savestate_patches() noexcept
+	{
+		return s_savestate_patches;
+	}
+
+	// RPCS3_PROBE_WATCH=<hex address>:<count>: print the non-zero big-endian u32 words of this guest range with every report
+	// (for example counters written by a diagnostic game patch)
+	static const std::pair<u32, u32> s_watch = []() -> std::pair<u32, u32>
+	{
+		const char* v = std::getenv("RPCS3_PROBE_WATCH");
+
+		if (!v)
+		{
+			return {};
+		}
+
+		char* end = nullptr;
+		const u32 addr = static_cast<u32>(std::strtoul(v, &end, 16));
+		const u32 count = (end && *end == ':') ? static_cast<u32>(std::strtoul(end + 1, nullptr, 10)) : 1;
+		return { addr, std::min<u32>(count, 256) };
+	}();
 
 	static const bool s_null_audio_clock = std::getenv("RPCS3_PROBE_AUDIO_CLOCK") != nullptr;
 
@@ -102,6 +127,20 @@ namespace perf_probe
 		}
 
 		fmt::append(out, " | frames>20ms=%u >34ms=%u", g_frames_over_20ms.exchange(0), g_frames_over_34ms.exchange(0));
+
+		if (s_watch.second && vm::check_addr(s_watch.first, vm::page_readable, s_watch.second * 4))
+		{
+			fmt::append(out, " | watch 0x%x:", s_watch.first);
+
+			for (u32 i = 0; i < s_watch.second; i++)
+			{
+				if (const u32 value = vm::read32(s_watch.first + i * 4))
+				{
+					fmt::append(out, " [%u]=%u", i, value);
+				}
+			}
+		}
+
 		probe_log.notice("%s", out);
 	}
 

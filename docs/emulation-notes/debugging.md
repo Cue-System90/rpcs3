@@ -5,6 +5,9 @@
 - `RPCS3.log` is written to `$XDG_CACHE_HOME/rpcs3/` (Linux default `~/.cache/rpcs3/RPCS3.log`). A previous run is kept as `RPCS3.log.gz`.
 - Any RPCS3 invocation with the default config dir overwrites the log, including `--help` and `--decrypt`. Use isolated dirs (below) for helper calls.
 - Useful lines: `PPU executable hash: PPU-...` (patch/version identity), `SYS: Title:` / `Version: APP_VER=...`, lines starting with `·E` (error) and `·F` (fatal).
+- A fatal segfault report now carries a host backtrace of the faulting thread (fork, `Utilities/Thread.cpp`); resolve the
+  `rpcs3(+0x...)` offsets with `llvm-addr2line -f -C -i -e build/bin/rpcs3 0x...`. Frames in a driver library show which
+  Vulkan call failed (for example `libnvidia-glcore` under `vk::descriptor_set::flush` = a bad descriptor write).
 - `Failed to lock sudo memory` is harmless on Linux with the default 8 MiB `RLIMIT_MEMLOCK` (logged once since fork commit "vm: Report a failed sudo memory lock only once").
 
 ## Isolated test runs

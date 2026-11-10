@@ -52,6 +52,18 @@ The RSX is an NVIDIA G70/NV47-family GPU (NV40 3D class `0x4097`). The CPU write
 
 ### Shaders
 
+- **Screen-space dither in Gran Turismo 5** (Nov 2026): 7085 of 7199 fragment programs dumped from a race end with the
+  same sequence: `TEX` on texture unit 15 with `_bx2` expansion at the raw `WPOS` coordinate, the single channel scaled by a
+  constant and added to the output colour. It is a tiled noise texture that dithers the 8-bit output. Under RPCS3 with a
+  resolution scale it is applied per host pixel (3x finer at 300 %), and with the brightness raised 6x it shows as a
+  regular tile pattern over every dark area. The fork option `Disable screen-space dither` (video section, no GUI yet)
+  makes the decompiler emit a zero sample for a `TEX` whose coordinate is the WPOS input and whose result is `_bx2`
+  expanded (`FragmentProgramDecompiler::is_screen_space_dither_fetch`); the sampler stays declared because the draw path
+  binds every texture unit the ucode references, and an undeclared binding crashed the NVIDIA driver in
+  `vkUpdateDescriptorSets`. Measured on SSR5 (same flips): mean pixel difference ~1/255, 8 % of pixels change by >= 4,
+  none by >= 16, no banding visible in boosted crops. The pattern is subtle at normal brightness; it is not the cause of
+  the flare "squares" (texel magnification of small flare textures).
+
 - **Fragment programs:**
   - Fetch and invalidation: `prefetch_fragment_program` / `invalidate_fragment_program` (`Core/RSXGraphEngine.cpp`).
   - Decompiler: `FragmentProgramDecompiler.cpp`.

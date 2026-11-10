@@ -1155,6 +1155,13 @@ bool FragmentProgramDecompiler::handle_sct_scb(u32 opcode)
 	return false;
 }
 
+bool FragmentProgramDecompiler::is_screen_space_dither_fetch() const
+{
+	// TEX with _bx2 expansion whose coordinate is the WPOS input register (attribute 0) read directly, not through the index register.
+	// Gran Turismo 5 ends almost every surface shader with such a fetch and adds the scaled sample to the output colour.
+	return dst.exp_tex && src0.reg_type == RSX_FP_REGISTER_TYPE_INPUT && !src2.use_index_reg && dst.src_attr_reg_num == 0;
+}
+
 bool FragmentProgramDecompiler::handle_tex_srb(u32 opcode)
 {
 	auto insert_texture_fetch = [this](FUNCTION base_func)
@@ -1241,6 +1248,17 @@ bool FragmentProgramDecompiler::handle_tex_srb(u32 opcode)
 	}
 	case RSX_FP_OPCODE_TEX:
 	{
+		if (g_cfg.video.disable_screen_space_dither && is_screen_space_dither_fetch())
+		{
+			// Fork option: the fetch is a per-pixel noise/dither overlay (signed-expanded sample at the raw pixel position).
+			// A zero sample is the neutral value after _bx2 expansion, so the overlay contributes nothing.
+			// The sampler stays declared (AddTex) because the draw path binds every texture the ucode references.
+			AddTex();
+			properties.common_access_sampler_mask |= (1 << dst.tex_num);
+			SetDst("$float4(0., 0., 0., 0.)");
+			return true;
+		}
+
 		AddTex();
 		insert_texture_fetch(FUNCTION::TEXTURE_SAMPLE_BASE);
 		return true;

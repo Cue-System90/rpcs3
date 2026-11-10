@@ -9,6 +9,7 @@
 #include "Emu/system_config.h"
 #include "Emu/perf_probe.h"
 #include "Thread.h"
+#include "stack_trace.h"
 #include "Utilities/JIT.h"
 #include <cfenv>
 
@@ -27,7 +28,6 @@
 #include <process.h>
 #include <sysinfoapi.h>
 
-#include "stack_trace.h"
 #include "util/dyn_lib.hpp"
 
 DYNAMIC_IMPORT_RENAME("Kernel32.dll", SetThreadDescriptionImport, "SetThreadDescription", HRESULT(HANDLE hThread, PCWSTR lpThreadDescription));
@@ -2654,6 +2654,15 @@ static void signal_handler(int /*sig*/, siginfo_t* info, void* uct) noexcept
 	}
 
 	append_thread_name(msg);
+
+	// Fork: host backtrace of the faulting thread (symbols resolved as far as the binary allows)
+	{
+		fmt::append(msg, "Host backtrace:\n");
+		for (const auto& line : ::utils::get_backtrace_symbols(::utils::get_backtrace(32)))
+		{
+			fmt::append(msg, "    %s\n", line);
+		}
+	}
 
 #ifdef __APPLE__
 	thread_local bool s_tls_is_attempting_recovery = false;

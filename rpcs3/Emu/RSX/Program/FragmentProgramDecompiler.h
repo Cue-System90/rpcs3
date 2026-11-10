@@ -93,6 +93,7 @@ class FragmentProgramDecompiler
 	* otherwise do nothing and return false.
 	* NOTE: What does TEX SRB means ???
 	*/
+	bool is_screen_space_dither_fetch() const;
 	bool handle_tex_srb(u32 opcode);
 
 protected:

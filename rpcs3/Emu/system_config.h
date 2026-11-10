@@ -149,6 +149,7 @@ struct cfg_root : cfg::node
 		cfg::_bool disable_zcull_queries{ this, "Disable ZCull Occlusion Queries", false, true };
 		cfg::_bool disable_video_output{ this, "Disable Video Output", false, true };
 		cfg::_bool disable_vertex_cache{ this, "Disable Vertex Cache", false };
+		cfg::_bool disable_screen_space_dither{ this, "Disable screen-space dither", false }; // fork: drop signed-expanded texture fetches at the raw pixel position (dither/noise overlays)
 		cfg::_bool disable_FIFO_reordering{ this, "Disable FIFO Reordering", false };
 		cfg::_bool emulate_depth_compare{ this, "Emulate Special Depth Comparison", false };
 		cfg::_bool emulate_extended_depth_range{ this, "Emulate Extended Depth Range", false };
